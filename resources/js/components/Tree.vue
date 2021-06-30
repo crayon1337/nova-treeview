@@ -33,18 +33,18 @@ export default {
             const map = {}
             if (!rows) return
             rows.forEach(row => {
-                    let leaf = map[row.id.value] = {
-                        id: row.id.value,
-                        text: this.attrValue(row, 'title'),
-                        is_active: this.attrValue(row, 'is_active'),
-                        icon: this.isActiveIcon(true, true),
-                        order: this.attrValue(row, 'order'),
-                        parentText: this.attrValue(row, 'parent'),
-                        parentId: this.attrValue(row, 'parent', 'belongsToId'),
-                        children: [],
-                        opened: true,
-                    }
-                });
+                map[row.id.value] = {
+                    id: row.id.value,
+                    text: this.attrValue(row, 'name'),
+                    is_active: this.attrValue(row, 'is_active'),
+                    icon: this.isActiveIcon(this.attrValue(row, 'is_active'), true),
+                    parentText: this.attrValue(row, 'parent'),
+                    parentId: this.attrValue(row, 'parent', 'belongsToId'),
+                    slug: this.attrValue(row, 'slug'),
+                    children: [],
+                    opened: true,
+                }
+            });
             rows.forEach(row => {
                 let leaf = map[row.id.value]
                 if (leaf.parentId) {
@@ -68,14 +68,13 @@ export default {
             this.currentNode = node.model
         },
         dragEnded(node, item, draggedItem, e) {
-            console.log(node, item, draggedItem, e)
             this.updateParent(draggedItem, item)
         },
         formData(node, fields, method) {
             const formData = new FormData()
             const nodeFields = {
-                order: node.order,
-                title: node.text,
+                name: node.text,
+                slug: node.slug,
                 ...fields
             }
             for (let attr in nodeFields) {
@@ -86,20 +85,22 @@ export default {
             return formData
         },
         updateNode(node, fields = {}) {
-            return Nova.request().post(`/nova-api/${this.resource}/${node.id}?editing=true&editMode=update`, this.formData(node, fields, "PUT")).then(res => {
-                this.mergeResponse(res.data)
-            })
+            return Nova.request().post(`/nova-api/${this.resource}/${node.id}?editing=true&editMode=update`, this.formData(node, fields, "PUT"))
+                .then(res => {
+                    this.mergeResponse(res.data)
+                })
+                .catch(res => {
+                    console.error(res)
+                })
         },
         updateParent(node, newParent) {
             const oldParent = node.parentId && this.parents[node.parentId]
             return this.updateNode(node, {
-                order: 0,
                 parent: newParent.id
             }).catch(err => {
                 newParent.children.splice(newParent.children.indexOf(node), 1)
                 if (oldParent) {
                     oldParent.children.push(node)
-                    this.order(oldParent.children)
                 }
             })
         },
@@ -131,15 +132,18 @@ export default {
             this.lastRetrievedAt = Math.floor(Date.now() / 1000)
         },
         deleteNode() {
-            Nova.request().post(`/nova-api/${this.resource}`, this.formData(this.currentNode, {
-                resources: this.currentNode.id,
-            }, "DELETE"))
-                .then(res => {
-                    let parent = this.parents[this.currentNode.parentId]
+            Nova.request().post(`/nova-api/${this.resource}?resources[]=${this.currentNode.id}`, this.formData(this.currentNode, {}, "DELETE"))
+            .then(res => {
+                let parent = this.parents[this.currentNode.parentId]
+                if(parent)
                     parent.children.splice(parent.children.indexOf(this.currentNode), 1)
-                    this.currentNode = null
-                })
-                .catch()
+                else {
+                    this.$delete(this.parents, this.currentNode.id)
+                    this.$delete(this.tree, this.currentNode.id)
+                }
+                this.currentNode = null
+            })
+            .catch()
         },
         toggleNode() {
             const node = this.currentNode
@@ -147,9 +151,9 @@ export default {
             node.is_active = 'loading'
 
             this.updateNode(node, {
-                is_active: !activeState ? 1 : 0
+                is_active: !activeState ? 1 : 0,
+                slug: this.currentNode.slug
             }).catch(err => {
-                console.error(err)
                 node.is_active = activeState
                 this.$toasted.show('Failed toggling resource!', { type: 'error' })
             })
@@ -171,16 +175,18 @@ export default {
         },
         mergeResponse(res) {
             if (res.id && res.resource) {
-                const { id, parent_id, title, order, is_active} = res.resource
+                const { id, parent_id, is_active} = res.resource
                 const node = this.parents[id]
                 const parent = this.parents[parent_id]
-                node.parentText = parent.text
+                if(parent) {
+                    node.parentText = parent.text
+                    node.icon = this.isActiveIcon(is_active, parent.icon === 'enabled')
+                }
+                else
+                    node.icon = this.isActiveIcon(is_active, false)
+
                 node.parentId = parent_id
-                node.text = title
                 node.is_active = is_active
-                node.icon = this.isActiveIcon(is_active, parent.icon === 'enabled')
-                node.order = order
-                this.order(parent.children)
                 this.setIconState(node.children, node.icon === 'enabled')
                 this.updateRetrievedAt()
             }

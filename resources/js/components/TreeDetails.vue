@@ -25,17 +25,7 @@
                     <p class="text-90">{{ node.text }}</p>
                 </div>
             </div>
-            <div class="flex border-b border-40">
-                <div class="w-1/4 py-4">
-                    <h4 class="font-normal text-80">Order</h4>
-                </div>
-                <div class="w-3/4 py-4 break-words flex align-center">
-                    <p class="text-90">{{ node.order }}</p>
-                    <button v-if="node.order > 0" class="btn px-2 rounded inline-block ml-2 border" @click="$emit('onOrder', -1)">↥</button>
-                    <button class="btn px-2 rounded inline-block ml-2 border" @click="$emit('onOrder', 1)">↧</button>
-                </div>
-            </div>
-            <div class="flex border-b border-40">
+            <div class="flex border-b border-40" v-if="node.parentText">
                 <div class="w-1/4 py-4">
                     <h4 class="font-normal text-80">Parent</h4>
                 </div>
@@ -54,7 +44,7 @@
                         :id="is_active"
                         :name="Active"
                         :checked="node.is_active"
-                        :disabled="node.id === 1 || typeof node.is_active === 'string'"
+                        :disabled="typeof node.is_active === 'string'"
                     />
                 </div>
             </div>
@@ -79,7 +69,7 @@ export default {
     methods: {
         confirmDelete() {
             this.showModal = false;
-            if(this.node.children.length != 0) {
+            if(this.node.children.length !== 0) {
                 alert("Can't delete resource if there are sub resources")
             } else {
                 this.$emit('onDelete')
